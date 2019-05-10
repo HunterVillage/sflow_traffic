@@ -4,14 +4,18 @@
 
 import addpath
 import pcap
+from dpkt.ethernet import Ethernet
+from dpkt.ip import IP as dpktIP
 import dpkt
 import sys
-import threading
 from log import logger
 from IPy import IP
 from conf import TIME, NAME
+from datetime import datetime, timedelta
+from intervalTime import Timer
 from formart_server.f_s import formartS
 from getDefaultIp.getDefaultIp import getDefaultIp
+ETH_TYPE_ERSPAN1 = 0x88be
 
 # 列出所有网络接口
 # pcap.findalldevs()
@@ -48,7 +52,7 @@ def findin(arr, obj, obj1):
 
 # 解析sflow报文的数据，要配合sflowtool工具
 def parseSflow(Ethernet_pack):
-    if type(Ethernet_pack.data) == dpkt.ip.IP and type(
+    if type(Ethernet_pack.data) == dpktIP and type(
             Ethernet_pack.data.data) == dpkt.udp.UDP:
         # 解包，获得netFlowv5报文
         ip = Ethernet_pack.data
@@ -85,8 +89,10 @@ def parseSflow(Ethernet_pack):
 # 解析经过GRE封装过的报文，含有方向，就是通过GRE封装了一层ip和port，要获取最里面的两层数据
 def parseTCP(Ethernet_pack):
     # 判断是否为GRE   protocol==47
-    if type(Ethernet_pack.data) == dpkt.ip.IP and Ethernet_pack.data.p == 47:
-        greContent = Ethernet_pack.data.data.data.data
+    if type(Ethernet_pack.data) == dpktIP and Ethernet_pack.data.p == 47:
+        # 协议类型 25944，35006
+        # IP层
+        greContent = Ethernet_pack.ip.gre.ethernet.ip
         srcIp = '%d.%d.%d.%d' % tuple(map(ord, list(greContent.src)))
         dstIp = '%d.%d.%d.%d' % tuple(map(ord, list(greContent.dst)))
         sport = greContent.data.sport
@@ -126,9 +132,14 @@ def getIp():
         for ptime, pdata in dataPack:
             totalN += 1
             # 解包，获得数据链路层包
-            Ethernet_pack = dpkt.ethernet.Ethernet(pdata)
-            parseTCP(Ethernet_pack)
+            Ethernet_pack = Ethernet(pdata)
+            # 扩展dpkt解析ERSPAN数据
+            Ethernet.set_type(ETH_TYPE_ERSPAN1, Ethernet)
+            try:
+                parseTCP(Ethernet_pack)
             # dataBase.insert(tags, fields)
+            except Exception as e:
+                pass
 
         dataPack.close()
 
@@ -146,19 +157,28 @@ def clearResult():
 
 
 # 定时器
-def setInterval(fun, time=TIME):
-    if error:
-        logger.error('连接网卡失败，强制退出')
-        sys.exit(1)
-    timer = threading.Timer(time, setInterval, (fun, time))
-    fun()
-    timer.start()
+# def setInterval(fun, time=TIME):
+#     if error:
+#         logger.error('连接网卡失败，强制退出')
+#         sys.exit(1)
+#     timer = threading.Timer(time, setInterval, (fun, time))
+#     fun()
+#     timer.start()
 
 
 def main():
-    if not getDefaultIp():
+    ip = getDefaultIp()
+    if not ip:
         return
-    setInterval(clearResult)
+    # 保证清表在三台机器数据填充前完成,清表在望京机房提前5分钟完成
+    time = TIME
+    if '10.136' in ip:
+        cday = datetime.strptime('2019-3-3 ' + time, '%Y-%m-%d %H:%M:%S')
+        cday = cday - timedelta(minutes=5)
+        time = cday.strftime('%H:%M:%S')
+    logger.info('设置时间：%s', time)
+    t = Timer(clearResult, time)
+    t.start()
     getIp()
 
 
