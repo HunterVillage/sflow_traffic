@@ -1,5 +1,5 @@
 # sflow_traffic
-python解析sflow或TCP报文并存储到mysql，可多个机器部署
+python解析sflow或TCP报文(多种格式)并存储到mysql，可多个机器部署
 
 ## 说明
 sflowtool version: 5.02    
@@ -25,6 +25,11 @@ Ethernet.set_type(ETH_TYPE_ERSPAN1, Ethernet)
 
 ## 启动
 > sh start.sh
+
+## 定时设定
+格式：'HH:mm:ss'，例'1:20:00'表示凌晨1点20，
+如果设定时间的`小时数`大于当前时间的`小时数`则，会在当天执行一次，例当前时间'10:20:00',设定时间`11:00:00`，则会在40分钟后第一次执行。如果设定时间为`10:59:00`,则会在第二天开始的`10:59:00`第一次执行
+> tip: 每天都会在指定时间执行
 
 ## 目录结构
 
